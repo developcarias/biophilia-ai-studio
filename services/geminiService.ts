@@ -1,18 +1,20 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-const API_KEY = process.env.API_KEY;
+// Safely get API_KEY, will be undefined in browser unless polyfilled/configured
+const API_KEY = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : undefined;
 
-if (!API_KEY) {
+let ai: GoogleGenAI | null = null;
+if (API_KEY) {
+  ai = new GoogleGenAI({ apiKey: API_KEY });
+} else {
   // In a real app, you might want to handle this more gracefully.
   // For this example, we'll throw an error if the key is missing.
   console.warn("API_KEY environment variable not set. AI features will be disabled.");
 }
 
-const ai = new GoogleGenAI({ apiKey: API_KEY! });
-
 export const generateText = async (prompt: string, language: 'en' | 'es'): Promise<string> => {
-  if (!API_KEY) {
+  if (!ai) {
     return "AI service is unavailable. Please configure the API key.";
   }
   
