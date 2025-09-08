@@ -67,7 +67,7 @@ export async function getContent(): Promise<PageContent> {
         });
 
         const parsedActivities = parseJsonFields(allActivitiesRows, ['title', 'description']);
-        const parsedProjects = parseJsonFields(projectsRows, ['title', 'description']).map((p: any) => ({
+        const parsedProjects = parseJsonFields(projectsRows, ['title', 'description', 'detailDescription']).map((p: any) => ({
             ...p,
             activities: parsedActivities.filter((a: any) => a.project_id === p.id)
         }));
@@ -120,16 +120,17 @@ export async function updateContent(content: PageContent): Promise<void> {
         // 4. Update Projects and Activities (Clear and re-insert)
         await connection.execute('DELETE FROM project_activities');
         await connection.execute('DELETE FROM projects');
-        const insertProjectQuery = 'INSERT INTO projects (id, title, description, imageUrl, imageAlt, detailImageUrl, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
+        const insertProjectQuery = 'INSERT INTO projects (id, title, description, detailDescription, imageUrl, imageAlt, detailImageUrl, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
         const insertActivityQuery = 'INSERT INTO project_activities (id, date, title, description, imageUrl, project_id, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
         
         for (const [index, project] of content.projects.entries()) {
             const { activities, ...projectData } = project;
-            const stringifiedProject = stringifyJsonFields(projectData, ['title', 'description']);
+            const stringifiedProject = stringifyJsonFields(projectData, ['title', 'description', 'detailDescription']);
             await connection.execute(insertProjectQuery, [
                 stringifiedProject.id, 
                 stringifiedProject.title, 
                 stringifiedProject.description, 
+                stringifiedProject.detailDescription,
                 stringifiedProject.imageUrl, 
                 stringifiedProject.imageAlt, 
                 stringifiedProject.detailImageUrl, 
