@@ -15,8 +15,8 @@ export interface ValueItem {
   title: LocalizedText;
   slogan?: LocalizedText;
   text: LocalizedText;
-  imageUrl: string;
-  icon?: string; // Kept for ActionRibbon compatibility
+  imageUrl?: string;
+  icon?: string;
 }
 
 export interface ProjectActivity {
@@ -62,6 +62,13 @@ export interface AlliancePartner {
     id: string;
     name: string;
     logoUrl: string;
+}
+
+// User Management Type
+export interface User {
+  id: number;
+  username: string;
+  password?: string; // Only used for creating/updating
 }
 
 // NEW CMS STRUCTURE
@@ -116,12 +123,12 @@ export interface Statistic {
   icon: string;
   value: string;
   label: LocalizedText;
+  backgroundImages?: string[];
 }
 
 export interface OurNumbersSection {
   title: LocalizedText;
   stats: Statistic[];
-  galleryImages: { id: string; url: string; alt: string }[];
 }
 
 
