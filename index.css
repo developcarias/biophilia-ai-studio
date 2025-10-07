@@ -1,4 +1,50 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  /* Hide scrollbar for Chrome, Safari and Opera */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Hide scrollbar for IE, Edge and Firefox */
+  .scrollbar-hide {
+    -ms-overflow-style: none; /* IE and Edge */
+    scrollbar-width: none; /* Firefox */
+  }
+
+  /* Custom thin scrollbar for webkit browsers */
+  .scrollbar-thin::-webkit-scrollbar {
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+  }
+
+  /* Custom thin scrollbar for Firefox */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #ccc #f1f1f1;
+  }
+}
+
+.accordion-content {
+  transition: max-height 0.3s ease-in-out, visibility 0.3s ease-in-out;
+  overflow: hidden;
+  max-height: 0;
+  visibility: hidden;
+}
+
+.accordion-content.open {
+  max-height: 1000px; /* Or a sufficiently large value */
+  visibility: visible;
+}

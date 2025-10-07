@@ -32,10 +32,10 @@ const ContentBlock: React.FC<ContentBlockProps> = ({
     <div className="w-full md:w-7/12 flex flex-col justify-center px-8 md:px-12 py-8">
       <div className="relative group">
         <Editable localizedText={title || {en: '', es: ''}} basePath={`${basePath}.title`}>
-          <h2 className="text-3xl font-bold text-brand-green-dark mb-6">{title?.[language]}</h2>
+          <h2 className="text-3xl font-bold text-brand-green-dark mb-4">{title?.[language]}</h2>
         </Editable>
       </div>
-      <div className="relative group mt-4">
+      <div className="relative group">
         <Editable localizedText={text || {en: '', es: ''}} basePath={`${basePath}.text`} multiline>
           <p className="mt-4 text-lg leading-relaxed whitespace-pre-line">{text?.[language]}</p>
         </Editable>
@@ -44,7 +44,7 @@ const ContentBlock: React.FC<ContentBlockProps> = ({
   );
 
   return (
-    <section className="container mx-auto my-12">
+    <section className="container mx-auto">
       <div className={`flex flex-col md:flex-row items-center ${imagePosition === 'right' ? 'md:flex-row-reverse' : ''}`}>
         {imageEl}
         {textEl}

@@ -1,8 +1,14 @@
 import mysql from 'mysql2/promise';
 import { config } from '../config';
-import { PageContent, User } from '../types';
+import { PageContent, User, Project, TeamMember, BlogPost, ProjectActivity } from '../types';
 
-const pool = mysql.createPool(config.db);
+const pool = mysql.createPool({
+    ...config.db,
+    waitForConnections: true,
+    connectionLimit: 2, // Optimized for free tier resources
+    queueLimit: 0, // Fail fast if connections are busy
+    connectTimeout: 30000 // 30 seconds
+});
 
 // Helper to parse JSON fields from a database row or array of rows
 const parseJsonFields = (data: any, fields: string[]): any => {
@@ -55,13 +61,9 @@ export async function getContent(): Promise<PageContent> {
         const pagesContent: any = {};
         (pagesRows as any[]).forEach(row => {
             try {
-                // The content column can sometimes contain unescaped control characters from manual DB entries.
-                // This will cause JSON.parse to fail. We try to parse it as is, but have a fallback.
                 pagesContent[row.page_name] = JSON.parse(row.content || '{}');
             } catch (error) {
                 console.error(`Could not parse content for page "${row.page_name}". It may contain invalid JSON characters. Error: ${error}`);
-                // Fallback to an empty object for the corrupted page to prevent the whole app from crashing.
-                // The user can then fix the content in the admin panel and save it, which will correct the JSON in the DB.
                 pagesContent[row.page_name] = {};
             }
         });
@@ -96,96 +98,116 @@ export async function getContent(): Promise<PageContent> {
     }
 }
 
+
 export async function updateContent(content: PageContent): Promise<void> {
     const connection = await pool.getConnection();
+    await connection.beginTransaction();
+
     try {
-        await connection.beginTransaction();
-        
-        // 1. Update Global Content
+        // 1. Update simple singleton tables (These are working)
         const globalData = stringifyJsonFields(content.global, ['navigation', 'socialLinks', 'footer']);
-        const updateGlobalQuery = 'UPDATE global_content SET logoUrl = ?, navigation = ?, socialLinks = ?, footer = ? WHERE id = 1';
-        await connection.execute(updateGlobalQuery, [globalData.logoUrl, globalData.navigation, globalData.socialLinks, globalData.footer]);
-
-        // 2. Update UI Text
+        await connection.execute('UPDATE global_content SET logoUrl = ?, navigation = ?, socialLinks = ?, footer = ? WHERE id = 1', [globalData.logoUrl, globalData.navigation, globalData.socialLinks, globalData.footer]);
         await connection.execute('UPDATE ui_text SET texts = ? WHERE id = 1', [JSON.stringify(content.ui)]);
-
-        // 3. Update Pages Content
         const pageKeys: (keyof PageContent)[] = ['homePage', 'aboutPage', 'projectsPage', 'projectDetailPage', 'teamPage', 'blogPage', 'contactPage', 'donatePage'];
         for (const pageKey of pageKeys) {
             if (content[pageKey]) {
                 await connection.execute('UPDATE pages_content SET content = ? WHERE page_name = ?', [JSON.stringify(content[pageKey]), pageKey]);
             }
         }
-
-        // 4. Update Projects and Activities (Clear and re-insert)
-        await connection.execute('DELETE FROM project_activities');
-        await connection.execute('DELETE FROM projects');
-        const insertProjectQuery = 'INSERT INTO projects (id, title, description, detailDescription, imageUrl, imageAlt, detailImageUrl, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)';
-        const insertActivityQuery = 'INSERT INTO project_activities (id, date, title, description, imageUrl, project_id, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
         
-        for (const [index, project] of content.projects.entries()) {
+        // --- Synchronization for Projects and Activities ---
+        const incomingProjects = content.projects || [];
+        const [dbProjectsResult] = await connection.query('SELECT id FROM projects');
+        const dbProjectIds = new Set((dbProjectsResult as any[]).map(p => p.id));
+        const incomingProjectIds = new Set(incomingProjects.map(p => p.id));
+        
+        const projectsToDelete = Array.from(dbProjectIds).filter(id => !incomingProjectIds.has(id));
+        if (projectsToDelete.length > 0) {
+            const placeholders = projectsToDelete.map(() => '?').join(',');
+            await connection.query(`DELETE FROM project_activities WHERE project_id IN (${placeholders})`, projectsToDelete);
+            await connection.query(`DELETE FROM projects WHERE id IN (${placeholders})`, projectsToDelete);
+        }
+        
+        const incomingActivities = incomingProjects.flatMap(p => p.activities || []);
+        const [dbActivitiesResult] = await connection.query('SELECT id FROM project_activities');
+        const dbActivityIds = new Set((dbActivitiesResult as any[]).map(a => a.id));
+        const incomingActivityIds = new Set(incomingActivities.map(a => a.id));
+
+        const activitiesToDelete = Array.from(dbActivityIds).filter(id => !incomingActivityIds.has(id));
+        if (activitiesToDelete.length > 0) {
+            const placeholders = activitiesToDelete.map(() => '?').join(',');
+            await connection.query(`DELETE FROM project_activities WHERE id IN (${placeholders})`, activitiesToDelete);
+        }
+        
+        for (let index = 0; index < incomingProjects.length; index++) {
+            const project = incomingProjects[index];
             const { activities, ...projectData } = project;
-            const stringifiedProject = stringifyJsonFields(projectData, ['title', 'description', 'detailDescription']);
-            await connection.execute(insertProjectQuery, [
-                stringifiedProject.id, 
-                stringifiedProject.title, 
-                stringifiedProject.description, 
-                stringifiedProject.detailDescription,
-                stringifiedProject.imageUrl, 
-                stringifiedProject.imageAlt, 
-                stringifiedProject.detailImageUrl, 
-                index
-            ]);
-            
-            for(const [actIndex, activity] of activities.entries()) {
-                 const stringifiedActivity = stringifyJsonFields(activity, ['title', 'description']);
-                 await connection.execute(insertActivityQuery, [
-                    stringifiedActivity.id,
-                    stringifiedActivity.date,
-                    stringifiedActivity.title,
-                    stringifiedActivity.description,
-                    stringifiedActivity.imageUrl,
-                    project.id,
-                    actIndex
-                 ]);
+            const sp = stringifyJsonFields(projectData, ['title', 'description', 'detailDescription']);
+            const upsertProjectSql = `
+                INSERT INTO projects (id, title, description, detailDescription, imageUrl, imageAlt, detailImageUrl, display_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE title = VALUES(title), description = VALUES(description), detailDescription = VALUES(detailDescription), imageUrl = VALUES(imageUrl), imageAlt = VALUES(imageAlt), detailImageUrl = VALUES(detailImageUrl), display_order = VALUES(display_order)`;
+            await connection.execute(upsertProjectSql, [sp.id, sp.title, sp.description, sp.detailDescription, sp.imageUrl, sp.imageAlt, sp.detailImageUrl, index]);
+
+            const projectActivities = activities || [];
+            for (let actIndex = 0; actIndex < projectActivities.length; actIndex++) {
+                const activity = projectActivities[actIndex];
+                const sa = stringifyJsonFields(activity, ['title', 'description']);
+                const upsertActivitySql = `
+                    INSERT INTO project_activities (id, date, title, description, imageUrl, project_id, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE date = VALUES(date), title = VALUES(title), description = VALUES(description), imageUrl = VALUES(imageUrl), project_id = VALUES(project_id), display_order = VALUES(display_order)`;
+                await connection.execute(upsertActivitySql, [sa.id, sa.date, sa.title, sa.description, sa.imageUrl, project.id, actIndex]);
             }
         }
         
-        // 5. Update Team Members
-        await connection.execute('DELETE FROM team_members');
-        const insertTeamQuery = 'INSERT INTO team_members (id, name, role, bio, imageUrl, imageAlt, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)';
-        for (const [index, member] of content.team.entries()) {
-            const stringifiedMember = stringifyJsonFields(member, ['name', 'role', 'bio']);
-            await connection.execute(insertTeamQuery, [
-                stringifiedMember.id,
-                stringifiedMember.name,
-                stringifiedMember.role,
-                stringifiedMember.bio,
-                stringifiedMember.imageUrl,
-                stringifiedMember.imageAlt,
-                index
-            ]);
-        }
-
-        // 6. Update Blog Posts
-        await connection.execute('DELETE FROM blog_posts');
-        const insertBlogQuery = 'INSERT INTO blog_posts (id, slug, title, author, date, summary, content, imageUrl, imageAlt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)';
-        for (const post of content.blog) {
-             const stringifiedPost = stringifyJsonFields(post, ['title', 'summary', 'content']);
-             await connection.execute(insertBlogQuery, [
-                stringifiedPost.id,
-                stringifiedPost.slug,
-                stringifiedPost.title,
-                stringifiedPost.author,
-                stringifiedPost.date,
-                stringifiedPost.summary,
-                stringifiedPost.content,
-                stringifiedPost.imageUrl,
-                stringifiedPost.imageAlt
-             ]);
+        // --- Synchronization for Team Members ---
+        const incomingTeam = content.team || [];
+        const [dbTeamResult] = await connection.query('SELECT id FROM team_members');
+        const dbTeamIds = new Set((dbTeamResult as any[]).map(t => t.id));
+        const incomingTeamIds = new Set(incomingTeam.map(t => t.id));
+        
+        const teamToDelete = Array.from(dbTeamIds).filter(id => !incomingTeamIds.has(id));
+        if (teamToDelete.length > 0) {
+            const placeholders = teamToDelete.map(() => '?').join(',');
+            await connection.query(`DELETE FROM team_members WHERE id IN (${placeholders})`, teamToDelete);
         }
         
-        await connection.commit();
+        for (let index = 0; index < incomingTeam.length; index++) {
+            const member = incomingTeam[index];
+            const sm = stringifyJsonFields(member, ['name', 'role', 'bio']);
+            const upsertTeamSql = `
+                INSERT INTO team_members (id, name, role, bio, imageUrl, imageAlt, display_order) VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE name = VALUES(name), role = VALUES(role), bio = VALUES(bio), imageUrl = VALUES(imageUrl), imageAlt = VALUES(imageAlt), display_order = VALUES(display_order)`;
+            await connection.execute(upsertTeamSql, [sm.id, sm.name, sm.role, sm.bio, sm.imageUrl, sm.imageAlt, index]);
+        }
+
+        // --- Synchronization for Blog Posts ---
+        const incomingBlog = content.blog || [];
+        const [dbBlogResult] = await connection.query('SELECT id FROM blog_posts');
+        const dbBlogIds = new Set((dbBlogResult as any[]).map(p => p.id));
+        const incomingBlogIds = new Set(incomingBlog.map(p => p.id));
+
+        const blogToDelete = Array.from(dbBlogIds).filter(id => !incomingBlogIds.has(id));
+        if (blogToDelete.length > 0) {
+            const placeholders = blogToDelete.map(() => '?').join(',');
+            await connection.query(`DELETE FROM blog_posts WHERE id IN (${placeholders})`, blogToDelete);
+        }
+
+        for (const post of incomingBlog) {
+            const sp = stringifyJsonFields(post, ['title', 'summary', 'content']);
+            const upsertBlogSql = `
+                INSERT INTO blog_posts (id, slug, title, author, date, summary, content, imageUrl, imageAlt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE slug = VALUES(slug), title = VALUES(title), author = VALUES(author), date = VALUES(date), summary = VALUES(summary), content = VALUES(content), imageUrl = VALUES(imageUrl), imageAlt = VALUES(imageAlt)`;
+            await connection.execute(upsertBlogSql, [sp.id, sp.slug, sp.title, sp.author, sp.date, sp.summary, sp.content, sp.imageUrl, sp.imageAlt]);
+        }
+        
+        try {
+            await connection.commit();
+        } catch (commitError) {
+            console.error("Failed to commit transaction. Rolling back.", commitError);
+            await connection.rollback();
+            throw commitError;
+        }
+
     } catch (error) {
         await connection.rollback();
         console.error("Database transaction failed. Rolling back changes. Error:", error);
@@ -208,6 +230,7 @@ export async function getAllUsers(): Promise<User[]> {
 
 export async function createUser(user: Omit<User, 'id'>): Promise<User> {
     const { username, password } = user;
+    // In a real app, hash the password here before inserting
     const [result] = await pool.execute('INSERT INTO users (username, password) VALUES (?, ?)', [username, password]);
     const insertId = (result as any).insertId;
     return { id: insertId, username };
@@ -215,6 +238,7 @@ export async function createUser(user: Omit<User, 'id'>): Promise<User> {
 
 export async function updateUser(id: number, updates: Partial<User>): Promise<void> {
     const { username, password } = updates;
+    // In a real app, hash the password if it's being updated
     if (password && username) {
         await pool.execute('UPDATE users SET username = ?, password = ? WHERE id = ?', [username, password, id]);
     } else if (username) {

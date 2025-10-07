@@ -1,6 +1,6 @@
 
-
 import React, { useState, useEffect } from 'react';
+// FIX: Changed to namespace import to resolve module resolution issues with react-router-dom.
 import * as ReactRouterDOM from 'react-router-dom';
 import { PageContent, User } from './types';
 import { INITIAL_CONTENT } from './constants';
@@ -31,12 +31,35 @@ const AppContent = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const navigate = ReactRouterDOM.useNavigate();
+  const location = ReactRouterDOM.useLocation();
 
   const [isMediaLibraryOpen, setIsMediaLibraryOpen] = useState(false);
   const [mediaTarget, setMediaTarget] = useState('');
 
-  // IMPORTANT: Replace this URL with your actual deployed backend URL.
-  const API_URL = 'https://tu-backend-biophilia.onrender.com';
+  // Dynamically set API_URL based on hostname
+  const API_URL = window.location.hostname === 'localhost' 
+    ? 'http://localhost:3001' 
+    : 'https://tab-biophilia-front-back.onrender.com';
+
+  useEffect(() => {
+    // Ping the keepalive endpoint every 14 minutes to prevent the backend from sleeping
+    const keepaliveInterval = setInterval(() => {
+      fetch(`${API_URL}/api/keepalive`)
+        .then(res => {
+          if (res.ok) {
+            console.log('Keepalive ping successful');
+          } else {
+            console.warn('Keepalive ping failed.');
+          }
+        })
+        .catch(err => {
+          console.error('Error sending keepalive ping:', err);
+        });
+    }, 14 * 60 * 1000); // 14 minutes
+
+    // Clear the interval when the component unmounts
+    return () => clearInterval(keepaliveInterval);
+  }, [API_URL]);
 
   useEffect(() => {
     // Check for saved login state
@@ -56,6 +79,15 @@ const AppContent = () => {
         const response = await fetch(`${API_URL}/api/content`);
         if (!response.ok) throw new Error('Failed to fetch content');
         const data = await response.json();
+
+        // Data migration: Move 'values' from homePage to 'values' in aboutPage
+        if (data.homePage && (data.homePage as any).values && data.aboutPage) {
+          if (!data.aboutPage.values || !data.aboutPage.values.items || data.aboutPage.values.items.length === 0) {
+            data.aboutPage.values = (data.homePage as any).values;
+          }
+          delete (data.homePage as any).values;
+        }
+
         setDisplayContent(data);
         setEditableContent(JSON.parse(JSON.stringify(data))); // Deep copy for editing
       } catch (error) {
@@ -65,7 +97,7 @@ const AppContent = () => {
       }
     };
     fetchContent();
-  }, []);
+  }, [API_URL]);
 
   const handleLogin = (user: User) => {
     setIsLoggedIn(true);
@@ -127,7 +159,35 @@ const AppContent = () => {
   };
   
   if (isLoading) {
-      return <div className="h-screen w-full flex items-center justify-center bg-brand-green-dark text-white text-2xl">Loading Biophilia Institute...</div>
+      return (
+        <div className="h-screen w-full flex flex-col items-center justify-center bg-brand-green-light text-brand-green-dark transition-opacity duration-500 ease-in-out">
+          <style>
+            {`
+              @keyframes pulse-subtle {
+                0%, 100% {
+                  transform: scale(1);
+                  opacity: 0.8;
+                }
+                50% {
+                  transform: scale(1.05);
+                  opacity: 1;
+                }
+              }
+              .animate-pulse-subtle {
+                animation: pulse-subtle 3s ease-in-out infinite;
+              }
+            `}
+          </style>
+          <div className="animate-pulse-subtle">
+            <svg className="w-24 h-24 text-brand-accent" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c.243 0 .487-.01.728-.028M12 3c.243 0 .487.01.728-.028m-1.456 18.002c-.16.013-.321.023-.485.023l-.004-.001-.004-.001c-.164 0-.325-.01-.485-.023M12 3a9.004 9.004 0 00-8.716 6.747M12 3a9.004 9.004 0 018.716 6.747m-17.432 0h17.432" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-light tracking-widest mt-4 animate-pulse">
+            BIOPHILIA INSTITUTE
+          </h1>
+        </div>
+      );
   }
   
   // When logged in, render the editable content for a live preview experience.
@@ -148,7 +208,7 @@ const AppContent = () => {
             onClose={() => setIsMediaLibraryOpen(false)}
         />
       )}
-      <div className="bg-brand-green-light min-h-screen flex flex-col font-sans text-brand-gray">
+      <div className="min-h-screen flex flex-col font-sans text-brand-gray">
         {isLoggedIn && <AdminBar onLogout={handleLogout} />}
         <Header 
           content={contentToRender.global}
@@ -157,14 +217,14 @@ const AppContent = () => {
         <main className="flex-grow">
           <ReactRouterDOM.Routes>
             <ReactRouterDOM.Route path="/" element={<HomePage content={contentToRender.homePage} uiText={contentToRender.ui} projects={contentToRender.projects} />} />
-            <ReactRouterDOM.Route path="/about" element={<AboutPage content={contentToRender.aboutPage} valuesContent={contentToRender.homePage.values || {title: {en: 'Our Values', es: 'Nuestros Valores'}, items: []}} />} />
+            <ReactRouterDOM.Route path="/about" element={<AboutPage content={contentToRender.aboutPage} />} />
             <ReactRouterDOM.Route path="/projects" element={<ProjectsPage content={contentToRender.projectsPage} projects={contentToRender.projects} uiText={contentToRender.ui} />} />
             <ReactRouterDOM.Route path="/projects/:projectId" element={<ProjectDetailPage projects={contentToRender.projects} content={contentToRender.projectDetailPage} />} />
             <ReactRouterDOM.Route path="/team" element={<TeamPage content={contentToRender.teamPage} team={contentToRender.team} />} />
             <ReactRouterDOM.Route path="/blog" element={<BlogPage content={contentToRender.blogPage} posts={contentToRender.blog} uiText={contentToRender.ui} />} />
             <ReactRouterDOM.Route path="/blog/:slug" element={<BlogPostPage content={contentToRender.blogPage} posts={contentToRender.blog} uiText={contentToRender.ui} />} />
             <ReactRouterDOM.Route path="/contact" element={<ContactPage content={contentToRender.contactPage} globalContent={contentToRender.global} apiUrl={API_URL} />} />
-            <ReactRouterDOM.Route path="/donate" element={<DonatePage content={contentToRender.donatePage} />} />
+            <ReactRouterDOM.Route path="/donate" element={<DonatePage content={contentToRender.donatePage} apiUrl={API_URL} />} />
             <ReactRouterDOM.Route path="/login" element={<LoginPage onLoginSuccess={handleLogin} />} />
             <ReactRouterDOM.Route 
               path="/admin" 

@@ -1,3 +1,5 @@
+
+
 import React, { useState } from 'react';
 import { useI18n } from '../i18n';
 import { DonatePageContent } from '../types';
@@ -6,17 +8,41 @@ import Editable from '../components/Editable';
 
 interface DonatePageProps {
   content: DonatePageContent;
+  apiUrl: string;
 }
 
-const DonatePage: React.FC<DonatePageProps> = ({ content }) => {
+const DonatePage: React.FC<DonatePageProps> = ({ content, apiUrl }) => {
   const [amount, setAmount] = useState(50);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    emailAddress: '',
+  });
+  const [status, setStatus] = useState<'idle' | 'sending' | 'error'>('idle');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const presetAmounts = [25, 50, 100, 250, 500];
   const { language } = useI18n();
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({ ...formData, [e.target.id]: e.target.value });
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsSubmitted(true);
+    setStatus('sending');
+    try {
+      const response = await fetch(`${apiUrl}/api/donate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...formData, amount }),
+      });
+      if (!response.ok) throw new Error('Failed to process donation.');
+      setStatus('idle');
+      setIsSubmitted(true); // Show thank you page
+    } catch (error) {
+      console.error(error);
+      setStatus('error');
+    }
   };
   
   const renderTextWithAmount = (text: string, value: number) => {
@@ -34,7 +60,7 @@ const DonatePage: React.FC<DonatePageProps> = ({ content }) => {
           basePath="donatePage.thankYou.title"
           localizedText={content.thankYou?.title}
         />
-        <div className="bg-white py-20">
+        <div className="bg-white py-8 lg:py-12">
           <div className="container mx-auto px-4 text-center max-w-2xl">
             <p className="text-xl text-brand-gray">
               {renderTextWithAmount(content.thankYou?.text?.[language] || 'Thank you for your generous donation of ${{amount}}.', amount)}
@@ -53,7 +79,7 @@ const DonatePage: React.FC<DonatePageProps> = ({ content }) => {
         basePath="donatePage.banner.title"
         localizedText={content.banner?.title}
       />
-      <div className="bg-brand-green-light py-12 md:py-20">
+      <div className="bg-brand-green-light py-8 lg:py-12">
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-2xl overflow-hidden">
             <div className="p-8 md:p-12">
@@ -95,17 +121,17 @@ const DonatePage: React.FC<DonatePageProps> = ({ content }) => {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                   <div>
-                    <label className="block text-sm font-bold text-brand-gray mb-1" htmlFor="first-name">{content.form?.firstName?.[language] || 'First Name'}</label>
-                    <input type="text" id="first-name" required className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-green focus:border-brand-green bg-white text-brand-gray"/>
+                    <label className="block text-sm font-bold text-brand-gray mb-1" htmlFor="firstName">{content.form?.firstName?.[language] || 'First Name'}</label>
+                    <input type="text" id="firstName" required value={formData.firstName} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-green focus:border-brand-green bg-white text-brand-gray"/>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-brand-gray mb-1" htmlFor="last-name">{content.form?.lastName?.[language] || 'Last Name'}</label>
-                    <input type="text" id="last-name" required className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-green focus:border-brand-green bg-white text-brand-gray"/>
+                    <label className="block text-sm font-bold text-brand-gray mb-1" htmlFor="lastName">{content.form?.lastName?.[language] || 'Last Name'}</label>
+                    <input type="text" id="lastName" required value={formData.lastName} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-green focus:border-brand-green bg-white text-brand-gray"/>
                   </div>
                 </div>
                 <div className="mb-6">
-                    <label className="block text-sm font-bold text-brand-gray mb-1" htmlFor="email">{content.form?.emailAddress?.[language] || 'Email Address'}</label>
-                    <input type="email" id="email" required className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-green focus:border-brand-green bg-white text-brand-gray"/>
+                    <label className="block text-sm font-bold text-brand-gray mb-1" htmlFor="emailAddress">{content.form?.emailAddress?.[language] || 'Email Address'}</label>
+                    <input type="email" id="emailAddress" required value={formData.emailAddress} onChange={handleChange} className="w-full p-2 border border-gray-300 rounded-md focus:ring-brand-green focus:border-brand-green bg-white text-brand-gray"/>
                 </div>
 
                 <div className="p-4 bg-gray-100 rounded-lg text-center text-gray-500">
@@ -113,9 +139,10 @@ const DonatePage: React.FC<DonatePageProps> = ({ content }) => {
                 </div>
 
                 <div className="mt-8">
-                  <button type="submit" className="w-full bg-brand-accent text-white font-bold text-xl py-4 rounded-lg hover:bg-brand-accent/90 transition-transform transform hover:scale-105 shadow-lg">
-                    {renderTextWithAmount(content.form?.donateAmount?.[language] || 'Donate ${{amount}}', amount)}
+                  <button type="submit" disabled={status === 'sending'} className="w-full bg-brand-accent text-white font-bold text-xl py-4 rounded-lg hover:bg-brand-accent/90 transition-transform transform hover:scale-105 shadow-lg disabled:bg-gray-400">
+                     {status === 'sending' ? 'Processing...' : renderTextWithAmount(content.form?.donateAmount?.[language] || 'Donate ${{amount}}', amount)}
                   </button>
+                  {status === 'error' && <p className="text-red-500 mt-4 text-center">Could not process donation. Please try again later.</p>}
                 </div>
 
               </form>

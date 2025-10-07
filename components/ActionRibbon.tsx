@@ -1,9 +1,7 @@
 
 
 import React from 'react';
-// FIX: Changed to namespace import to resolve module resolution issues with react-router-dom.
 import * as ReactRouterDOM from 'react-router-dom';
-// FIX: Corrected type import from 'ActionLineItem' to 'ValueItem' as suggested by the error.
 import { ValueItem } from '../types';
 import { useI18n, useTranslate } from '../i18n';
 
@@ -32,7 +30,7 @@ const ActionRibbon: React.FC<ActionRibbonProps> = ({ items, isVisible }) => {
     return (
         <div className={`relative -mt-24 z-20 transition-all duration-700 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
             <div 
-                className="bg-[#0077c8] text-white"
+                className="bg-brand-green text-white"
                 style={{boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05)'}}
             >
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">

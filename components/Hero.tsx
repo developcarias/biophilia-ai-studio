@@ -68,10 +68,10 @@ const Hero: React.FC<HeroProps> = ({ slides, uiText }) => {
             <div className="lg:w-1/2 xl:w-2/5">
                 <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight drop-shadow-lg">{currentSlide.title[language]}</h1>
                 <p className="mt-4 max-w-2xl text-xl md:text-2xl drop-shadow-md whitespace-pre-line opacity-90">{currentSlide.subtitle[language]}</p>
-                {(currentSlide.projectId || currentSlide.activityId) && (
+                {currentSlide.projectId && (
                   <div className="mt-8">
                   <a href={buttonLink} className="bg-brand-accent text-white px-8 py-3 rounded-md text-lg font-semibold hover:bg-brand-accent/90 transition-transform transform hover:scale-105 shadow-lg">
-                      {uiText.learnMore[language]}
+                      {uiText.supportMission[language]}
                   </a>
                   </div>
                 )}

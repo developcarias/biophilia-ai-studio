@@ -1,5 +1,4 @@
 
-
 import { PageContent } from './types';
 
 // This is a placeholder for the initial structure.
@@ -39,7 +38,7 @@ export const INITIAL_CONTENT: PageContent = {
     },
     actionLines: {
       title: { en: '', es: '' },
-      items: []
+      items: [],
     },
     latestProjects: {
       title: { en: '', es: '' },
@@ -51,12 +50,9 @@ export const INITIAL_CONTENT: PageContent = {
       text: { en: '', es: '' },
       imageUrl: ''
     },
-    values: {
-      title: { en: '', es: '' },
-      items: []
-    },
     ourNumbers: {
       title: { en: '', es: '' },
+      description: { en: '', es: '' },
       stats: [],
     },
     alliances: {
@@ -76,6 +72,10 @@ export const INITIAL_CONTENT: PageContent = {
     mission: { title: { en: '', es: '' }, text: { en: '', es: '' }, imageUrl: '', imageAlt: '' },
     vision: { title: { en: '', es: '' }, text: { en: '', es: '' }, imageUrl: '', imageAlt: '' },
     work: { title: { en: '', es: '' }, text: { en: '', es: '' }, imageUrl: '', imageAlt: '' },
+    values: {
+      title: { en: '', es: '' },
+      items: []
+    },
   },
   projectsPage: {
     banner: { title: { en: '', es: '' }, imageUrl: '' },
