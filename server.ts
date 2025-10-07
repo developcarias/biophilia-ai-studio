@@ -9,8 +9,11 @@ import { listFiles, uploadFile, deleteFile, createDirectory, deleteDirectory } f
 import { sendContactEmail, sendDonationNotificationEmail } from './services/email';
 import { User } from './types';
 import * as ftp from 'basic-ftp';
+import Stripe from 'stripe';
 
 const app = express();
+
+const stripe = new Stripe(config.stripe.secretKey);
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -31,7 +34,7 @@ if (process.env.API_KEY) {
 // --- API ROUTES ---
 
 // Content Management
-app.get('/api/content', async (req: express.Request, res: express.Response) => {
+app.get('/api/content', async (req, res) => {
     try {
         const content = await getContent();
         res.json(content);
@@ -41,7 +44,7 @@ app.get('/api/content', async (req: express.Request, res: express.Response) => {
     }
 });
 
-app.put('/api/content', async (req: express.Request, res: express.Response) => {
+app.put('/api/content', async (req, res) => {
     try {
         await updateContent(req.body);
         res.status(200).json({ message: 'Content updated successfully.' });
@@ -52,7 +55,7 @@ app.put('/api/content', async (req: express.Request, res: express.Response) => {
 });
 
 // User Authentication & Management
-app.post('/api/login', async (req: express.Request, res: express.Response) => {
+app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await getUserByUsername(username);
@@ -69,7 +72,7 @@ app.post('/api/login', async (req: express.Request, res: express.Response) => {
     }
 });
 
-app.get('/api/users', async (req: express.Request, res: express.Response) => {
+app.get('/api/users', async (req, res) => {
     try {
         const users = await getAllUsers();
         res.json(users);
@@ -79,7 +82,7 @@ app.get('/api/users', async (req: express.Request, res: express.Response) => {
     }
 });
 
-app.post('/api/users', async (req: express.Request, res: express.Response) => {
+app.post('/api/users', async (req, res) => {
     try {
         const newUser: Omit<User, 'id'> = req.body;
         const createdUser = await createUser(newUser);
@@ -90,7 +93,7 @@ app.post('/api/users', async (req: express.Request, res: express.Response) => {
     }
 });
 
-app.put('/api/users/:id', async (req: express.Request, res: express.Response) => {
+app.put('/api/users/:id', async (req, res) => {
     try {
         const userId = parseInt(req.params.id, 10);
         const userUpdates: Partial<User> = req.body;
@@ -102,7 +105,7 @@ app.put('/api/users/:id', async (req: express.Request, res: express.Response) =>
     }
 });
 
-app.delete('/api/users/:id', async (req: express.Request, res: express.Response) => {
+app.delete('/api/users/:id', async (req, res) => {
     try {
         const userId = parseInt(req.params.id, 10);
         // A real app would get current user from a token, but for now we trust the client-side check.
@@ -117,7 +120,7 @@ app.delete('/api/users/:id', async (req: express.Request, res: express.Response)
 
 
 // Media Library (FTP)
-app.get('/api/media', async (req: express.Request, res: express.Response) => {
+app.get('/api/media', async (req, res) => {
     try {
         const directoryPath = (req.query.path as string) || '/';
         if (directoryPath.includes('..')) {
@@ -135,7 +138,7 @@ app.get('/api/media', async (req: express.Request, res: express.Response) => {
     }
 });
 
-app.post('/api/media/folder', async (req: express.Request, res: express.Response) => {
+app.post('/api/media/folder', async (req, res) => {
     const { path } = req.body;
     if (!path || typeof path !== 'string') {
         return res.status(400).json({ message: 'Path is required.' });
@@ -152,7 +155,7 @@ app.post('/api/media/folder', async (req: express.Request, res: express.Response
     }
 });
 
-app.delete('/api/media/folder', async (req: express.Request, res: express.Response) => {
+app.delete('/api/media/folder', async (req, res) => {
     try {
         const directoryPath = (req.query.path as string);
         if (!directoryPath || directoryPath === '/') {
@@ -169,10 +172,10 @@ app.delete('/api/media/folder', async (req: express.Request, res: express.Respon
     }
 });
 
-app.post('/api/media/upload', upload.single('file'), async (req: express.Request, res: express.Response) => {
+app.post('/api/media/upload', upload.single('file'), async (req, res) => {
     // The `file` property is added by multer. We cast to `any` for simplicity
     // or you could extend the Express.Request type.
-    const file = (req as any).file;
+    const file = req.file;
     const path = (req.body.path as string) || '/';
     if (!file) {
         return res.status(400).json({ message: 'No file uploaded.' });
@@ -189,7 +192,7 @@ app.post('/api/media/upload', upload.single('file'), async (req: express.Request
     }
 });
 
-app.delete('/api/media/:filename', async (req: express.Request, res: express.Response) => {
+app.delete('/api/media/:filename', async (req, res) => {
     try {
         const path = (req.query.path as string) || '/';
         if (path.includes('..')) {
@@ -205,7 +208,7 @@ app.delete('/api/media/:filename', async (req: express.Request, res: express.Res
 
 
 // Contact Form (SMTP)
-app.post('/api/contact', async (req: express.Request, res: express.Response) => {
+app.post('/api/contact', async (req, res) => {
     const { name, email, message } = req.body;
     if (!name || !email || !message) {
         return res.status(400).json({ message: 'All fields are required.' });
@@ -220,7 +223,7 @@ app.post('/api/contact', async (req: express.Request, res: express.Response) => 
 });
 
 // Donation Notification
-app.post('/api/donate', async (req: express.Request, res: express.Response) => {
+app.post('/api/donate', async (req, res) => {
     const { firstName, lastName, emailAddress, amount } = req.body;
     if (!firstName || !lastName || !emailAddress || amount === undefined) {
         return res.status(400).json({ message: 'All fields are required.' });
@@ -234,14 +237,37 @@ app.post('/api/donate', async (req: express.Request, res: express.Response) => {
     }
 });
 
+// Stripe Payment Intent
+app.post('/api/create-payment-intent', async (req, res) => {
+    const { amount } = req.body;
+    if (!amount || typeof amount !== 'number' || amount <= 0) {
+        return res.status(400).json({ message: 'A valid amount is required.' });
+    }
+    try {
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(amount * 100), // Amount in cents
+            currency: 'usd',
+            automatic_payment_methods: {
+                enabled: true,
+            },
+        });
+        res.send({
+            clientSecret: paymentIntent.client_secret,
+        });
+    } catch (error: any) {
+        console.error("Stripe Error:", error.message);
+        res.status(500).json({ message: 'Failed to create payment intent.' });
+    }
+});
+
 
 // Keepalive endpoint to prevent the server from sleeping
-app.get('/api/keepalive', (req: express.Request, res: express.Response) => {
+app.get('/api/keepalive', (req, res) => {
     res.status(200).json({ status: 'alive', timestamp: new Date() });
 });
 
 // Gemini AI Text Generation
-app.post('/api/generate-text', async (req: express.Request, res: express.Response) => {
+app.post('/api/generate-text', async (req, res) => {
     if (!ai) {
         return res.status(503).json({ message: "AI service is not configured on the server." });
     }

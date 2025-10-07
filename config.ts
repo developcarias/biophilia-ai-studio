@@ -25,6 +25,10 @@ export const config = {
       pass: 'Svs..6242'
     }
   },
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    publishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY || ''
+  },
   server: {
     port: process.env.PORT || 3001,
   }
